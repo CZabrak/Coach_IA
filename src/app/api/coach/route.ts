@@ -18,7 +18,34 @@ type CoachRequest = {
   templates?: unknown[];
 };
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+export const maxDuration = 60;
+
+const MODELS = [
+  process.env.GEMINI_MODEL || "gemini-3.5-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+];
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function callGemini(apiKey: string, payload: string) {
+  let last: Response | undefined;
+  for (const model of MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      last = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          body: payload,
+        },
+      );
+      if (![429, 500, 503].includes(last.status)) return last;
+      await sleep(700);
+    }
+  }
+  return last!;
+}
 
 function buildInstruction(body: CoachRequest) {
   const location = body.location === "Gym" ? "Gym" : "Maison";
@@ -114,17 +141,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: buildInstruction(body) }] },
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, responseMimeType: "application/json" },
-        }),
-      },
+    const response = await callGemini(
+      apiKey,
+      JSON.stringify({
+        system_instruction: { parts: [{ text: buildInstruction(body) }] },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, responseMimeType: "application/json" },
+      }),
     );
 
     const data = await response.json();
