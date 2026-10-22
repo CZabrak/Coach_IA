@@ -1,6 +1,8 @@
 "use client";
 
-import { Check, Copy, Layers, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Check, Copy, ImageIcon, Layers, Trash2 } from "lucide-react";
+import { ExerciseMedia } from "@/components/ExerciseMedia";
 import Stepper from "@/components/Stepper";
 import type { SetEntry } from "@/lib/types";
 
@@ -13,6 +15,13 @@ type Props = {
 };
 
 export default function SetList({ sets, onUpdate, onToggleDone, onRemove, onDuplicate }: Props) {
+  const [shown, setShown] = useState<Set<string>>(new Set());
+  const toggleMedia = (id: string) =>
+    setShown((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const groups: { exerciseId: string; name: string; sets: SetEntry[] }[] = [];
   for (const set of sets) {
     const existing = groups.find((g) => g.exerciseId === set.exercise_id);
@@ -43,10 +52,30 @@ export default function SetList({ sets, onUpdate, onToggleDone, onRemove, onDupl
           >
             <header className="mb-2 flex items-center justify-between gap-2">
               <h3 className="truncate text-sm font-semibold text-slate-100">{group.name}</h3>
-              <span className="shrink-0 rounded-full bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-400">
-                {doneCount}/{group.sets.length}
-              </span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <button
+                  onClick={() => toggleMedia(group.exerciseId)}
+                  aria-label={`Voir l'illustration de ${group.name}`}
+                  aria-pressed={shown.has(group.exerciseId)}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                    shown.has(group.exerciseId)
+                      ? "bg-indigo-500/20 text-indigo-300"
+                      : "text-slate-500 active:bg-slate-800"
+                  }`}
+                >
+                  <ImageIcon className="h-4 w-4" />
+                </button>
+                <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-400">
+                  {doneCount}/{group.sets.length}
+                </span>
+              </div>
             </header>
+
+            {shown.has(group.exerciseId) && (
+              <div className="mb-2">
+                <ExerciseMedia name={group.name} />
+              </div>
+            )}
 
             <div className="space-y-2">
               {group.sets.map((set) => (
