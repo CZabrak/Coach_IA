@@ -16,6 +16,20 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Configuration de Supabase
+
+1. Copie `.env.example` vers `.env.local`.
+2. Dans Supabase, ouvre **Project Settings → API** et copie l'URL du projet ainsi que sa clé publishable dans `.env.local` :
+
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-key
+   ```
+
+3. Redémarre le serveur de développement après avoir modifié `.env.local`.
+
+L'URL doit correspondre à un projet Supabase actif. Si le navigateur affiche `ERR_NAME_NOT_RESOLVED`, vérifie l'URL du projet et la connexion/DNS avant de vérifier les permissions des tables.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
