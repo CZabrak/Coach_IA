@@ -37,6 +37,10 @@ import CoachPanel from "@/components/CoachPanel";
 import ProgramsPanel, { DEFAULT_PROGRAM } from "@/components/ProgramsPanel";
 import InjuryPanel from "@/components/InjuryPanel";
 import RestTimer from "@/components/RestTimer";
+import SessionClock from "@/components/SessionClock";
+import WorkoutSummary, { type WorkoutSummaryData } from "@/components/WorkoutSummary";
+import { bestHistoricalE1RM, estimate1RM } from "@/lib/history";
+import { encodeMeta } from "@/lib/notes";
 
 type Tab = "session" | "programs" | "coach" | "history";
 type Draft = {
@@ -46,6 +50,9 @@ type Draft = {
   activeTemplateId: string;
   location: Location;
   sets: SetEntry[];
+  startedAt?: number | null;
+  sessionNote?: string;
+  exerciseNotes?: Record<string, string>;
 };
 type Cache = {
   exercises: Exercise[];
@@ -96,6 +103,10 @@ export default function WorkoutApp() {
   const [selectedMuscle, setSelectedMuscle] = useState("Tous");
   const [selectedExerciseId, setSelectedExerciseId] = useState("");
   const [sets, setSets] = useState<SetEntry[]>([]);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [sessionNote, setSessionNote] = useState("");
+  const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
+  const [summary, setSummary] = useState<WorkoutSummaryData | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
 
   const notify = useCallback((message: string, tone: Toast["tone"] = "info") => {
@@ -130,7 +141,7 @@ export default function WorkoutApp() {
         supabase
           .from("workouts")
           .select(
-            `id, date, created_at, name, location,
+            `id, date, created_at, name, location, notes,
              workout_sets ( exercise_id, set_number, superset_group, weight, reps, rpe, exercises ( name ) )`,
           )
           .order("created_at", { ascending: false })
@@ -190,6 +201,9 @@ export default function WorkoutApp() {
       setActiveTemplateId(draft.activeTemplateId ?? "");
       setLocation(draft.location);
       setSets(draft.sets);
+      setStartedAt(draft.startedAt ?? null);
+      setSessionNote(draft.sessionNote ?? "");
+      setExerciseNotes(draft.exerciseNotes ?? {});
     }
     setDraftLoaded(true);
     setNowMs(Date.now());
@@ -266,9 +280,23 @@ export default function WorkoutApp() {
         activeTemplateId,
         location,
         sets,
+        startedAt,
+        sessionNote,
+        exerciseNotes,
       } satisfies Draft);
     }
-  }, [draftLoaded, workoutName, programTitle, dayNumber, activeTemplateId, location, sets]);
+  }, [
+    draftLoaded,
+    workoutName,
+    programTitle,
+    dayNumber,
+    activeTemplateId,
+    location,
+    sets,
+    startedAt,
+    sessionNote,
+    exerciseNotes,
+  ]);
 
   const filteredExercises = useMemo(
     () =>
@@ -381,6 +409,7 @@ export default function WorkoutApp() {
     if (!target) return;
     updateSet(tempId, "done", !target.done);
     if (!target.done) {
+      setStartedAt((current) => current ?? Date.now());
       if (typeof navigator.vibrate === "function") navigator.vibrate(15);
       timer.start(timer.defaultRest);
     }
@@ -472,16 +501,43 @@ export default function WorkoutApp() {
     notify("Séance rechargée, bonne séance !", "success");
   }
 
-  function clearSession() {
-    if (sets.length > 0 && !window.confirm("Vider la séance en cours ?")) return;
+  function resetSessionState() {
     setSets([]);
     setWorkoutName(DEFAULT_NAME);
     setProgramTitle("");
     setActiveTemplateId("");
+    setStartedAt(null);
+    setSessionNote("");
+    setExerciseNotes({});
+  }
+
+  function clearSession() {
+    if (sets.length > 0 && !window.confirm("Vider la séance en cours ?")) return;
+    resetSessionState();
   }
 
   const doneCount = sets.filter((s) => s.done).length;
   const setsToSave = doneCount > 0 ? sets.filter((s) => s.done) : sets;
+
+  function buildSummary(name: string, durationSeconds: number | null): WorkoutSummaryData {
+    const names = new Map<string, string>();
+    const best = new Map<string, number>();
+    for (const s of setsToSave) {
+      names.set(s.exercise_id, s.exercise_name);
+      best.set(s.exercise_id, Math.max(best.get(s.exercise_id) ?? 0, estimate1RM(s.weight, s.reps)));
+    }
+    const records = [...best.entries()]
+      .map(([id, e1rm]) => ({ name: names.get(id) ?? "Exercice", e1rm, previous: bestHistoricalE1RM(recentWorkouts, id) }))
+      .filter((r) => r.previous > 0 && r.e1rm > r.previous + 0.01);
+    return {
+      name,
+      durationSeconds,
+      exerciseCount: names.size,
+      setCount: setsToSave.length,
+      volume: setsToSave.reduce((sum, s) => sum + Number(s.weight) * Number(s.reps), 0),
+      records,
+    };
+  }
 
   async function saveWorkout() {
     if (setsToSave.length === 0) {
@@ -491,9 +547,21 @@ export default function WorkoutApp() {
     setSaving(true);
     try {
       const baseName = workoutName.trim() || DEFAULT_NAME;
+      const fullName = programTitle ? `${programTitle} - ${baseName}` : baseName;
+      const durationSeconds = startedAt ? Math.max(60, Math.round((Date.now() - startedAt) / 1000)) : null;
+      const savedExercises = new Set(setsToSave.map((s) => s.exercise_id));
+      const notes = encodeMeta({
+        note: sessionNote,
+        duration: durationSeconds,
+        exerciseNotes: Object.fromEntries(
+          Object.entries(exerciseNotes).filter(([id]) => savedExercises.has(id)),
+        ),
+      });
+      const resume = buildSummary(fullName, durationSeconds);
+
       const { data: workout, error: workoutError } = await supabase
         .from("workouts")
-        .insert([{ name: programTitle ? `${programTitle} - ${baseName}` : baseName, location }])
+        .insert([{ name: fullName, location, notes }])
         .select()
         .single();
       if (workoutError || !workout) throw new Error(workoutError?.message ?? "Séance non créée.");
@@ -511,12 +579,9 @@ export default function WorkoutApp() {
       );
       if (setsError) throw new Error(setsError.message);
 
-      setSets([]);
-      setWorkoutName(DEFAULT_NAME);
-      setProgramTitle("");
-      setActiveTemplateId("");
+      resetSessionState();
       timer.stop();
-      notify("Séance enregistrée 💪", "success");
+      setSummary(resume);
       await fetchData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erreur inconnue";
@@ -825,8 +890,11 @@ export default function WorkoutApp() {
 
           <section aria-label="Séries en cours" className="space-y-3">
             <div className="flex items-center justify-between px-1">
-              <h2 className="text-sm font-semibold text-slate-300">
-                Séance en cours <span className="text-slate-500">({sets.length})</span>
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-300">
+                <span>
+                  Séance en cours <span className="text-slate-500">({sets.length})</span>
+                </span>
+                {startedAt && <SessionClock startedAt={startedAt} />}
               </h2>
               {sets.length > 0 && (
                 <button
@@ -846,10 +914,26 @@ export default function WorkoutApp() {
               onRemoveExercise={removeExercise}
               onReplaceExercise={replaceExercise}
               onUpdate={updateSet}
+              exerciseNotes={exerciseNotes}
+              onExerciseNote={(id, text) => setExerciseNotes((c) => ({ ...c, [id]: text }))}
               onToggleDone={toggleDone}
               onRemove={removeSet}
               onDuplicate={duplicateSet}
             />
+
+            {sets.length > 0 && (
+              <label className="block space-y-1.5">
+                <span className="px-1 text-xs font-medium text-slate-400">Note de séance</span>
+                <textarea
+                  value={sessionNote}
+                  onChange={(e) => setSessionNote(e.target.value)}
+                  rows={2}
+                  maxLength={500}
+                  placeholder="Sensations, énergie, douleur, ce qu'il faut ajuster…"
+                  className="w-full resize-none rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600"
+                />
+              </label>
+            )}
 
             {sets.length > 0 && (
               <div className="space-y-2 pt-1">
@@ -911,6 +995,8 @@ export default function WorkoutApp() {
       </main>
 
       <RestTimer timer={timer} />
+
+      {summary && <WorkoutSummary summary={summary} onClose={() => setSummary(null)} />}
 
       {toast && (
         <div

@@ -1,6 +1,7 @@
 "use client";
 
-import { Calendar, History, RotateCcw } from "lucide-react";
+import { Calendar, Clock, History, RotateCcw, StickyNote } from "lucide-react";
+import { decodeMeta, formatDuration } from "@/lib/notes";
 import { relOne, type RecentWorkout } from "@/lib/types";
 
 type Props = {
@@ -47,14 +48,23 @@ export default function HistoryList({ workouts, loading, onRepeat }: Props) {
     <div className="space-y-3">
       {workouts.map((workout) => {
         const exercises = summarize(workout);
+        const meta = decodeMeta(workout.notes);
         return (
           <article key={workout.id} className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3.5">
             <header className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="truncate text-sm font-semibold text-emerald-400">{workout.name}</h3>
-                <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
-                  <Calendar className="h-3.5 w-3.5" />
-                  {workout.date} · {workout.location}
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5" />
+                    {workout.date} · {workout.location}
+                  </span>
+                  {meta.duration ? (
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5" />
+                      {formatDuration(meta.duration)}
+                    </span>
+                  ) : null}
                 </p>
               </div>
               <button
@@ -75,6 +85,12 @@ export default function HistoryList({ workouts, loading, onRepeat }: Props) {
                 </li>
               ))}
             </ul>
+            {meta.note && (
+              <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-100">
+                <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" />
+                {meta.note}
+              </p>
+            )}
           </article>
         );
       })}

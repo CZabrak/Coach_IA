@@ -66,6 +66,7 @@ export type RecentWorkout = {
   created_at: string;
   name: string;
   location: string;
+  notes?: string | null;
   workout_sets: HistorySet[];
 };
 

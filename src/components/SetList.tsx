@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import {
@@ -35,6 +35,8 @@ type Props = {
   onMoveExercise: (exerciseId: string, direction: -1 | 1) => void;
   onRemoveExercise: (exerciseId: string) => void;
   onReplaceExercise: (exerciseId: string, replacement: Exercise) => void;
+  exerciseNotes: Record<string, string>;
+  onExerciseNote: (exerciseId: string, text: string) => void;
   onUpdate: <K extends keyof SetEntry>(tempId: string, field: K, value: SetEntry[K]) => void;
   onToggleDone: (tempId: string) => void;
   onRemove: (tempId: string) => void;
@@ -48,6 +50,8 @@ export default function SetList({
   onMoveExercise,
   onRemoveExercise,
   onReplaceExercise,
+  exerciseNotes,
+  onExerciseNote,
   onUpdate,
   onToggleDone,
   onRemove,
@@ -203,7 +207,7 @@ export default function SetList({
                       <p className="text-[10px] font-medium uppercase tracking-wide text-indigo-300/80">
                         Dernière fois · {relativeDay(last.date)}
                       </p>
-                      <p className="truncate text-xs font-semibold text-slate-200">{summary} kg×reps</p>
+                      <p className="truncate text-xs font-semibold text-slate-200">{summary} lbs×reps</p>
                     </div>
                     <button
                       onClick={apply}
@@ -212,6 +216,12 @@ export default function SetList({
                       Reprendre
                     </button>
                   </div>
+                  {last.note && (
+                    <p className="rounded-lg bg-slate-950/60 px-2.5 py-1.5 text-[11px] text-slate-400">
+                      <span className="font-semibold text-slate-300">Ta note : </span>
+                      {last.note}
+                    </p>
+                  )}
                   {suggestion && (
                     <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-2.5 py-1.5">
                       <TrendingUp className="h-4 w-4 shrink-0 text-amber-300" />
@@ -248,7 +258,7 @@ export default function SetList({
                       <span className="text-xs font-bold text-emerald-400">Série {set.set_number}</span>
                       {isRecord && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold text-amber-300">
-                          <Trophy className="h-3 w-3" /> Record · 1RM ~{formatWeight(Math.round(estimate1RM(set.weight, set.reps) * 10) / 10)} kg
+                          <Trophy className="h-3 w-3" /> Record · 1RM ~{formatWeight(Math.round(estimate1RM(set.weight, set.reps) * 10) / 10)} lbs
                         </span>
                       )}
                       <input
@@ -316,6 +326,15 @@ export default function SetList({
                 );
               })}
             </div>
+            <input
+              type="text"
+              value={exerciseNotes[group.exerciseId] ?? ""}
+              onChange={(e) => onExerciseNote(group.exerciseId, e.target.value)}
+              maxLength={200}
+              placeholder="Note (sensations, douleur, réglages…)"
+              aria-label={`Note pour ${group.name}`}
+              className="mt-2 h-9 w-full rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 text-xs text-slate-200 placeholder:text-slate-600"
+            />
           </article>
         );
       })}

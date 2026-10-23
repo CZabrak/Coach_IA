@@ -1,3 +1,4 @@
+﻿import { decodeMeta } from "@/lib/notes";
 import type { RecentWorkout } from "@/lib/types";
 
 export type PastSet = { set_number: number; weight: number; reps: number; rpe: number };
@@ -5,6 +6,7 @@ export type PastSet = { set_number: number; weight: number; reps: number; rpe: n
 export type LastPerformance = {
   date: string;
   sets: PastSet[];
+  note: string;
 };
 
 // L'historique est trié du plus récent au plus ancien.
@@ -22,7 +24,10 @@ export function lastPerformance(
         reps: Number(s.reps),
         rpe: Number(s.rpe),
       }));
-    if (sets.length > 0) return { date: workout.date || workout.created_at, sets };
+    if (sets.length > 0) {
+      const note = decodeMeta(workout.notes).exerciseNotes[exerciseId] ?? "";
+      return { date: workout.date || workout.created_at, sets, note };
+    }
   }
   return null;
 }
@@ -56,7 +61,7 @@ export type Suggestion = {
 };
 
 // Double progression : on monte les reps jusqu'à REP_MAX, puis on augmente la charge.
-export function suggestProgression(last: LastPerformance, step = 2.5): Suggestion | null {
+export function suggestProgression(last: LastPerformance, step = 5): Suggestion | null {
   const working = last.sets.filter((s) => s.weight > 0);
   if (working.length === 0) return null;
   const weight = Math.max(...working.map((s) => s.weight));
@@ -69,7 +74,7 @@ export function suggestProgression(last: LastPerformance, step = 2.5): Suggestio
       weight: weight + step,
       reps: REP_MIN,
       rpe: 8,
-      label: `Objectif atteint : passe à ${formatWeight(weight + step)} kg × ${REP_MIN}`,
+      label: `Objectif atteint : passe à ${formatWeight(weight + step)} lbs × ${REP_MIN}`,
     };
   }
   if (avgRpe >= 9.5) {
@@ -77,7 +82,7 @@ export function suggestProgression(last: LastPerformance, step = 2.5): Suggestio
       weight,
       reps: minReps,
       rpe: 8,
-      label: `Séance dure : refais ${formatWeight(weight)} kg × ${minReps} avec plus de marge`,
+      label: `Séance dure : refais ${formatWeight(weight)} lbs × ${minReps} avec plus de marge`,
     };
   }
   const target = Math.min(minReps + 1, REP_MAX);
@@ -85,7 +90,7 @@ export function suggestProgression(last: LastPerformance, step = 2.5): Suggestio
     weight,
     reps: target,
     rpe: 8,
-    label: `Vise ${formatWeight(weight)} kg × ${target} (+1 rep)`,
+    label: `Vise ${formatWeight(weight)} lbs × ${target} (+1 rep)`,
   };
 }
 
