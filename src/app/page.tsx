@@ -810,6 +810,7 @@ export default function WorkoutApp() {
 
             <SetList
               sets={sets}
+              history={recentWorkouts}
               onUpdate={updateSet}
               onToggleDone={toggleDone}
               onRemove={removeSet}

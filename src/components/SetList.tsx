@@ -4,17 +4,19 @@ import { useState } from "react";
 import { Check, Copy, ImageIcon, Layers, Trash2 } from "lucide-react";
 import { ExerciseMedia } from "@/components/ExerciseMedia";
 import Stepper from "@/components/Stepper";
-import type { SetEntry } from "@/lib/types";
+import { formatWeight, lastPerformance, relativeDay } from "@/lib/history";
+import type { RecentWorkout, SetEntry } from "@/lib/types";
 
 type Props = {
   sets: SetEntry[];
+  history: RecentWorkout[];
   onUpdate: <K extends keyof SetEntry>(tempId: string, field: K, value: SetEntry[K]) => void;
   onToggleDone: (tempId: string) => void;
   onRemove: (tempId: string) => void;
   onDuplicate: (tempId: string) => void;
 };
 
-export default function SetList({ sets, onUpdate, onToggleDone, onRemove, onDuplicate }: Props) {
+export default function SetList({ sets, history, onUpdate, onToggleDone, onRemove, onDuplicate }: Props) {
   const [shown, setShown] = useState<Set<string>>(new Set());
   const toggleMedia = (id: string) =>
     setShown((prev) => {
@@ -76,6 +78,44 @@ export default function SetList({ sets, onUpdate, onToggleDone, onRemove, onDupl
                 <ExerciseMedia name={group.name} />
               </div>
             )}
+
+            {(() => {
+              const last = lastPerformance(history, group.exerciseId);
+              if (!last) {
+                return (
+                  <p className="mb-2 rounded-lg bg-slate-950/60 px-2.5 py-1.5 text-[11px] text-slate-500">
+                    Première fois : pas d&apos;historique pour cet exercice.
+                  </p>
+                );
+              }
+              const summary = last.sets
+                .map((s) => `${formatWeight(s.weight)}×${s.reps}`)
+                .join(" · ");
+              const apply = () => {
+                group.sets.forEach((set, index) => {
+                  const past = last.sets[index] ?? last.sets[last.sets.length - 1];
+                  onUpdate(set.tempId, "weight", past.weight);
+                  onUpdate(set.tempId, "reps", past.reps);
+                  onUpdate(set.tempId, "rpe", past.rpe);
+                });
+              };
+              return (
+                <div className="mb-2 flex items-center gap-2 rounded-lg bg-indigo-500/10 px-2.5 py-1.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-indigo-300/80">
+                      Dernière fois · {relativeDay(last.date)}
+                    </p>
+                    <p className="truncate text-xs font-semibold text-slate-200">{summary} kg×reps</p>
+                  </div>
+                  <button
+                    onClick={apply}
+                    className="h-8 shrink-0 rounded-lg bg-indigo-500/20 px-3 text-xs font-semibold text-indigo-200 active:bg-indigo-500/30"
+                  >
+                    Reprendre
+                  </button>
+                </div>
+              );
+            })()}
 
             <div className="space-y-2">
               {group.sets.map((set) => (
