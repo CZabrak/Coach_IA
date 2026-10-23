@@ -286,16 +286,30 @@ export default function SetList({
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
+                      <button
+                        onClick={() => onToggleDone(set.tempId)}
+                        aria-pressed={set.done}
+                        aria-label={set.done ? "Série terminée, annuler" : "Valider la série"}
+                        className={`ml-1 flex h-9 w-11 items-center justify-center rounded-lg border transition active:scale-95 ${
+                          set.done
+                            ? "border-emerald-400 bg-emerald-500 text-emerald-950"
+                            : "border-slate-700 bg-slate-900 text-slate-500"
+                        }`}
+                      >
+                        <Check className="h-5 w-5" />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2">
-                    <Stepper
-                      label="Poids (lbs)"
-                      value={set.weight}
-                      step={5}
-                      onChange={(v) => onUpdate(set.tempId, "weight", v)}
-                    />
+                  <div className="grid grid-cols-2 items-end gap-2">
+                    <div className="col-span-2">
+                      <Stepper
+                        label="Poids (lbs)"
+                        value={set.weight}
+                        step={5}
+                        onChange={(v) => onUpdate(set.tempId, "weight", v)}
+                      />
+                    </div>
                     <Stepper
                       label="Reps"
                       value={set.reps}
@@ -309,18 +323,6 @@ export default function SetList({
                       max={10}
                       onChange={(v) => onUpdate(set.tempId, "rpe", v)}
                     />
-                    <button
-                      onClick={() => onToggleDone(set.tempId)}
-                      aria-pressed={set.done}
-                      aria-label={set.done ? "Série terminée, annuler" : "Valider la série"}
-                      className={`flex h-11 w-11 items-center justify-center rounded-xl border transition active:scale-95 ${
-                        set.done
-                          ? "border-emerald-400 bg-emerald-500 text-emerald-950"
-                          : "border-slate-700 bg-slate-900 text-slate-500"
-                      }`}
-                    >
-                      <Check className="h-5 w-5" />
-                    </button>
                   </div>
                 </div>
                 );
