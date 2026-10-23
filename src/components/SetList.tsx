@@ -1,10 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, ImageIcon, Layers, Trash2 } from "lucide-react";
+import { Check, Copy, ImageIcon, Layers, Trash2, TrendingUp, Trophy } from "lucide-react";
 import { ExerciseMedia } from "@/components/ExerciseMedia";
 import Stepper from "@/components/Stepper";
-import { formatWeight, lastPerformance, relativeDay } from "@/lib/history";
+import {
+  bestHistoricalE1RM,
+  estimate1RM,
+  formatWeight,
+  lastPerformance,
+  relativeDay,
+  suggestProgression,
+} from "@/lib/history";
 import type { RecentWorkout, SetEntry } from "@/lib/types";
 
 type Props = {
@@ -47,6 +54,8 @@ export default function SetList({ sets, history, onUpdate, onToggleDone, onRemov
     <div className="space-y-3">
       {groups.map((group) => {
         const doneCount = group.sets.filter((s) => s.done).length;
+        const bestE1RM = bestHistoricalE1RM(history, group.exerciseId);
+        const hasHistory = bestE1RM > 0;
         return (
           <article
             key={group.exerciseId}
@@ -99,30 +108,58 @@ export default function SetList({ sets, history, onUpdate, onToggleDone, onRemov
                   onUpdate(set.tempId, "rpe", past.rpe);
                 });
               };
+              const suggestion = suggestProgression(last);
+              const applySuggestion = () => {
+                if (!suggestion) return;
+                group.sets.forEach((set) => {
+                  onUpdate(set.tempId, "weight", suggestion.weight);
+                  onUpdate(set.tempId, "reps", suggestion.reps);
+                  onUpdate(set.tempId, "rpe", suggestion.rpe);
+                });
+              };
               return (
-                <div className="mb-2 flex items-center gap-2 rounded-lg bg-indigo-500/10 px-2.5 py-1.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-indigo-300/80">
-                      Dernière fois · {relativeDay(last.date)}
-                    </p>
-                    <p className="truncate text-xs font-semibold text-slate-200">{summary} kg×reps</p>
+                <div className="mb-2 space-y-1.5">
+                  <div className="flex items-center gap-2 rounded-lg bg-indigo-500/10 px-2.5 py-1.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-indigo-300/80">
+                        Dernière fois · {relativeDay(last.date)}
+                      </p>
+                      <p className="truncate text-xs font-semibold text-slate-200">{summary} kg×reps</p>
+                    </div>
+                    <button
+                      onClick={apply}
+                      className="h-8 shrink-0 rounded-lg bg-indigo-500/20 px-3 text-xs font-semibold text-indigo-200 active:bg-indigo-500/30"
+                    >
+                      Reprendre
+                    </button>
                   </div>
-                  <button
-                    onClick={apply}
-                    className="h-8 shrink-0 rounded-lg bg-indigo-500/20 px-3 text-xs font-semibold text-indigo-200 active:bg-indigo-500/30"
-                  >
-                    Reprendre
-                  </button>
+                  {suggestion && (
+                    <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-2.5 py-1.5">
+                      <TrendingUp className="h-4 w-4 shrink-0 text-amber-300" />
+                      <p className="min-w-0 flex-1 text-xs font-medium text-amber-100">{suggestion.label}</p>
+                      <button
+                        onClick={applySuggestion}
+                        className="h-8 shrink-0 rounded-lg bg-amber-500/20 px-3 text-xs font-semibold text-amber-200 active:bg-amber-500/30"
+                      >
+                        Appliquer
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })()}
 
             <div className="space-y-2">
-              {group.sets.map((set) => (
+              {group.sets.map((set) => {
+                const isRecord =
+                  set.done && hasHistory && estimate1RM(set.weight, set.reps) > bestE1RM + 0.01;
+                return (
                 <div
                   key={set.tempId}
                   className={`rounded-xl border p-2.5 transition ${
-                    set.done
+                    isRecord
+                      ? "border-amber-400/50 bg-amber-400/5"
+                      : set.done
                       ? "border-emerald-500/30 bg-emerald-500/5"
                       : "border-slate-800 bg-slate-950/60"
                   }`}
@@ -130,6 +167,11 @@ export default function SetList({ sets, history, onUpdate, onToggleDone, onRemov
                   <div className="mb-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-emerald-400">Série {set.set_number}</span>
+                      {isRecord && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                          <Trophy className="h-3 w-3" /> Record · 1RM ~{formatWeight(Math.round(estimate1RM(set.weight, set.reps) * 10) / 10)} kg
+                        </span>
+                      )}
                       <input
                         type="text"
                         value={set.superset_group}
@@ -192,7 +234,8 @@ export default function SetList({ sets, history, onUpdate, onToggleDone, onRemov
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </article>
         );
