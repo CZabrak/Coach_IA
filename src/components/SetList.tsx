@@ -1,8 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, ImageIcon, Layers, Trash2, TrendingUp, Trophy } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  Copy,
+  ImageIcon,
+  Layers,
+  MoreHorizontal,
+  Repeat2,
+  SkipForward,
+  Trash2,
+  TrendingUp,
+  Trophy,
+} from "lucide-react";
 import { ExerciseMedia } from "@/components/ExerciseMedia";
+import ReplaceExerciseSheet from "@/components/ReplaceExerciseSheet";
 import Stepper from "@/components/Stepper";
 import {
   bestHistoricalE1RM,
@@ -12,18 +26,35 @@ import {
   relativeDay,
   suggestProgression,
 } from "@/lib/history";
-import type { RecentWorkout, SetEntry } from "@/lib/types";
+import type { Exercise, RecentWorkout, SetEntry } from "@/lib/types";
 
 type Props = {
   sets: SetEntry[];
   history: RecentWorkout[];
+  exercises: Exercise[];
+  onMoveExercise: (exerciseId: string, direction: -1 | 1) => void;
+  onRemoveExercise: (exerciseId: string) => void;
+  onReplaceExercise: (exerciseId: string, replacement: Exercise) => void;
   onUpdate: <K extends keyof SetEntry>(tempId: string, field: K, value: SetEntry[K]) => void;
   onToggleDone: (tempId: string) => void;
   onRemove: (tempId: string) => void;
   onDuplicate: (tempId: string) => void;
 };
 
-export default function SetList({ sets, history, onUpdate, onToggleDone, onRemove, onDuplicate }: Props) {
+export default function SetList({
+  sets,
+  history,
+  exercises,
+  onMoveExercise,
+  onRemoveExercise,
+  onReplaceExercise,
+  onUpdate,
+  onToggleDone,
+  onRemove,
+  onDuplicate,
+}: Props) {
+  const [menu, setMenu] = useState<string | null>(null);
+  const [replacing, setReplacing] = useState<string | null>(null);
   const [shown, setShown] = useState<Set<string>>(new Set());
   const toggleMedia = (id: string) =>
     setShown((prev) => {
@@ -52,10 +83,11 @@ export default function SetList({ sets, history, onUpdate, onToggleDone, onRemov
 
   return (
     <div className="space-y-3">
-      {groups.map((group) => {
+      {groups.map((group, groupIndex) => {
         const doneCount = group.sets.filter((s) => s.done).length;
         const bestE1RM = bestHistoricalE1RM(history, group.exerciseId);
         const hasHistory = bestE1RM > 0;
+        const menuOpen = menu === group.exerciseId;
         return (
           <article
             key={group.exerciseId}
@@ -79,8 +111,55 @@ export default function SetList({ sets, history, onUpdate, onToggleDone, onRemov
                 <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-400">
                   {doneCount}/{group.sets.length}
                 </span>
+                <button
+                  onClick={() => setMenu(menuOpen ? null : group.exerciseId)}
+                  aria-label={`Actions pour ${group.name}`}
+                  aria-expanded={menuOpen}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                    menuOpen ? "bg-slate-700 text-slate-100" : "text-slate-500 active:bg-slate-800"
+                  }`}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
               </div>
             </header>
+
+            {menuOpen && (
+              <div className="mb-2 grid grid-cols-4 gap-1.5">
+                <button
+                  onClick={() => onMoveExercise(group.exerciseId, -1)}
+                  disabled={groupIndex === 0}
+                  className="flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl bg-slate-950/70 text-[10px] text-slate-300 active:bg-slate-800 disabled:opacity-30"
+                >
+                  <ArrowUp className="h-4 w-4" /> Monter
+                </button>
+                <button
+                  onClick={() => onMoveExercise(group.exerciseId, 1)}
+                  disabled={groupIndex === groups.length - 1}
+                  className="flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl bg-slate-950/70 text-[10px] text-slate-300 active:bg-slate-800 disabled:opacity-30"
+                >
+                  <ArrowDown className="h-4 w-4" /> Descendre
+                </button>
+                <button
+                  onClick={() => {
+                    setReplacing(group.exerciseId);
+                    setMenu(null);
+                  }}
+                  className="flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl bg-indigo-500/15 text-[10px] text-indigo-200 active:bg-indigo-500/25"
+                >
+                  <Repeat2 className="h-4 w-4" /> Remplacer
+                </button>
+                <button
+                  onClick={() => {
+                    onRemoveExercise(group.exerciseId);
+                    setMenu(null);
+                  }}
+                  className="flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl bg-rose-500/10 text-[10px] text-rose-300 active:bg-rose-500/20"
+                >
+                  <SkipForward className="h-4 w-4" /> Passer
+                </button>
+              </div>
+            )}
 
             {shown.has(group.exerciseId) && (
               <div className="mb-2">
@@ -240,6 +319,20 @@ export default function SetList({ sets, history, onUpdate, onToggleDone, onRemov
           </article>
         );
       })}
+      {replacing && (
+        <ReplaceExerciseSheet
+          current={{
+            id: replacing,
+            name: groups.find((g) => g.exerciseId === replacing)?.name ?? "",
+          }}
+          exercises={exercises}
+          onPick={(exercise) => {
+            onReplaceExercise(replacing, exercise);
+            setReplacing(null);
+          }}
+          onClose={() => setReplacing(null)}
+        />
+      )}
     </div>
   );
 }

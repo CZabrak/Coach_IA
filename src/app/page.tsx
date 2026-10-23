@@ -337,6 +337,36 @@ export default function WorkoutApp() {
     setSets((current) => renumber(current.filter((s) => s.tempId !== tempId)));
   }
 
+  function moveExercise(exerciseId: string, direction: -1 | 1) {
+    setSets((current) => {
+      const order = Array.from(new Set(current.map((s) => s.exercise_id)));
+      const from = order.indexOf(exerciseId);
+      const to = from + direction;
+      if (from === -1 || to < 0 || to >= order.length) return current;
+      [order[from], order[to]] = [order[to], order[from]];
+      return order.flatMap((id) => current.filter((s) => s.exercise_id === id));
+    });
+  }
+
+  function removeExercise(exerciseId: string) {
+    setSets((current) => renumber(current.filter((s) => s.exercise_id !== exerciseId)));
+    notify("Exercice retiré de la séance", "success");
+  }
+
+  function replaceExercise(exerciseId: string, replacement: Exercise) {
+    const weight = lastWeightFor(replacement.id);
+    setSets((current) =>
+      renumber(
+        current.map((s) =>
+          s.exercise_id === exerciseId
+            ? { ...s, exercise_id: replacement.id, exercise_name: replacement.name, weight, done: false }
+            : s,
+        ),
+      ),
+    );
+    notify(`Remplacé par « ${replacement.name} »`, "success");
+  }
+
   function duplicateSet(tempId: string) {
     setSets((current) => {
       const index = current.findIndex((s) => s.tempId === tempId);
@@ -811,6 +841,10 @@ export default function WorkoutApp() {
             <SetList
               sets={sets}
               history={recentWorkouts}
+              exercises={exercises}
+              onMoveExercise={moveExercise}
+              onRemoveExercise={removeExercise}
+              onReplaceExercise={replaceExercise}
               onUpdate={updateSet}
               onToggleDone={toggleDone}
               onRemove={removeSet}
