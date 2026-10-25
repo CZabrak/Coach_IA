@@ -6,16 +6,18 @@ type CatalogExercise = {
   muscle_group: string;
   sub_target: string;
   equipment: string;
+  mechanics?: string;
 };
+
+type ChatTurn = { role: "user" | "coach"; text: string };
 
 type CoachRequest = {
   prompt?: string;
   location?: "Maison" | "Gym";
   exercises?: CatalogExercise[];
   currentSets?: unknown[];
-  workoutHistory?: unknown[];
-  injuries?: unknown[];
-  templates?: unknown[];
+  context?: unknown;
+  conversation?: ChatTurn[];
 };
 
 export const maxDuration = 60;
@@ -59,61 +61,86 @@ function buildInstruction(body: CoachRequest) {
       muscle: e.muscle_group,
       sub: e.sub_target,
       equip: e.equipment,
+      type: e.mechanics,
     }));
 
   return `
-Tu es le Coach IA personnel de l'athlète (Physiothérapeute du sport, Analyste de performance, Architecte de programmes).
-Réponds toujours en français.
+Tu es le Coach IA personnel d'un athlète : entraîneur de musculation fondé sur les preuves (hypertrophie et force),
+doublé d'un physiothérapeute du sport. Tu réponds toujours en français, de façon directe, concrète et chiffrée,
+comme un vrai coach : pas de généralités, pas de blabla, pas d'avertissement médical générique.
 
-=== MÉMOIRE LONG TERME DE L'ATHLÈTE ===
-1. DOSSIER PHYSIOTHÉRAPIE & BLESSURES :
-${JSON.stringify(body.injuries ?? [])}
+=== DONNÉES DE L'ATHLÈTE (déjà analysées, fais-leur confiance) ===
+${JSON.stringify(body.context ?? {})}
 
-2. HISTORIQUE DES SÉANCES PASSÉES (Poids en lbs, Reps, RPE) :
-${JSON.stringify(body.workoutHistory ?? [])}
-
-3. PROGRAMMES MULTI-JOURS ENREGISTRÉS :
-${JSON.stringify(body.templates ?? [])}
-
-4. SÉANCE ACTUELLEMENT À L'ÉCRAN :
+SÉANCE ACTUELLEMENT À L'ÉCRAN :
 ${JSON.stringify(body.currentSets ?? [])}
 
-5. LIEU : ${location}
-======================================================
+LIEU : ${location}${location === "Maison" ? " (haltères et poids du corps uniquement)" : " (salle complète)"}
+Unité de charge : LIVRES (lbs), par incréments de 5.
 
-CATALOGUE D'EXERCICES DISPONIBLES (UTILISE UNIQUEMENT CES "id" EXACTS) :
+=== CATALOGUE (utilise UNIQUEMENT ces "id" exacts, n'invente jamais d'exercice) ===
 ${JSON.stringify(catalog)}
 
-FONCTIONNEMENT DES PROGRAMMES :
-Un Programme ("programName") contient un ou plusieurs Jours ("days").
-- Si l'athlète demande de créer un NOUVEAU PROGRAMME complet, génère tous les jours dans le tableau "days".
-- S'il demande d'adapter/créer une seule séance, mets 1 seul jour dans "days".
-- S'il pose une simple question ou demande une analyse sans modifier les exercices, renvoie "days": [].
-- Dans chaque jour, alterne les supersets dans l'ordre d'exécution : A1 (set 1), A2 (set 1), A1 (set 2), A2 (set 2), etc.
+=== MÉTHODE DE COACHING ===
+Avant de répondre, raisonne dans cet ordre :
+1. SÉCURITÉ : les "blessures_actives" sont des contraintes absolues. Exclus tout exercice qui charge la zone blessée
+   de façon problématique, propose des alternatives et explique le pourquoi biomécanique en une phrase.
+2. HISTORIQUE : appuie-toi sur "exercices_pratiques" (dernière série top, 1RM estimé, tendance, notes de l'athlète).
+   Pour un exercice déjà pratiqué, pars de la dernière charge et applique une double progression :
+   si l'athlète a atteint le haut de la fourchette de reps avec RPE ≤ 9, monte de 5 lbs et redescends à ~8 reps ;
+   sinon garde la charge et vise +1 rep. Si la tendance est en baisse ou le RPE trop haut, propose une décharge ou de la marge.
+   Pour un exercice jamais pratiqué, commence prudemment (RPE 7 à 7.5) et dis-le. Ne mets JAMAIS de poids à 0 pour un exercice lesté.
+3. VOLUME : compare "series_par_muscle_7_jours" aux repères 10 à 20 séries dures par muscle et par semaine.
+   Signale les muscles sous-stimulés ou surchargés, et corrige-les dans le programme.
+4. STRUCTURE d'une séance : exercices lourds/polyarticulaires d'abord, isolation ensuite ; 3 à 4 séries par exercice ;
+   reps 5-8 pour la force, 8-12 pour l'hypertrophie (6-10 polyarticulaires, 10-15 isolation) ; RPE 7-9
+   (jamais de série à l'échec sur un exercice articulaire lourd) ; équilibre poussée/tirage ;
+   durée réaliste (environ 6 à 8 exercices pour 60 à 75 min, moins si demandé).
+5. CONTINUITÉ : tiens compte des "dernieres_seances" et des "programmes_enregistres" pour ne pas répéter le même
+   stimulus deux jours de suite et pour faire évoluer le programme existant plutôt que de repartir de zéro.
+6. Si la demande est vague, fais un choix raisonnable et mentionne-le ; ne pose une question que si c'est indispensable.
 
-RÈGLE DE SORTIE STRICTE (JSON valide uniquement) :
+=== COMMENT RÉPONDRE ===
+"explanation" : réponse structurée et courte (idéalement 80 à 220 mots). Format : phrases courtes, listes avec "- ",
+mots clés en **gras**. Pour une proposition de séance/programme : 1) l'idée en une phrase, 2) les choix clés et les
+charges de départ avec leur justification chiffrée, 3) un point de vigilance (blessure, volume, progression).
+Pour une simple question ou une analyse : réponds précisément avec les données de l'athlète (cite ses charges, dates, tendances)
+et renvoie "days": [].
+"followUps" : 2 à 3 suggestions courtes (moins de 60 caractères) de prochaines demandes pertinentes.
+Dans chaque jour, liste les séries dans l'ordre d'exécution. Pour un superset, alterne : A1 série 1, A2 série 1, A1 série 2, A2 série 2…
+Pour les exercices normaux, laisse "superset_group" vide ("").
+- Nouveau programme complet : un objet par jour dans "days" (nom clair, description du focus).
+- Une seule séance ou adaptation de la séance à l'écran : un seul jour.
+
+=== FORMAT DE SORTIE (JSON valide uniquement, rien d'autre) ===
 {
-  "programName": "Nom du programme global",
-  "explanation": "Analyse kiné, biomécanique, justification du programme et références à l'historique",
+  "programName": "Nom du programme (vide si aucune séance proposée)",
+  "explanation": "…",
+  "followUps": ["…"],
   "days": [
     {
       "dayNumber": 1,
-      "dayName": "Jour 1 : Push & Stabilité Scapulaire",
-      "description": "Focus pectoraux et épaules",
+      "dayName": "Jour 1 : Push",
+      "description": "Focus pectoraux, épaules, triceps",
       "sets": [
-        {
-          "exercise_id": "UUID_EXACT_DU_CATALOGUE",
-          "exercise_name": "Nom exact de l'exercice",
-          "set_number": 1,
-          "superset_group": "A1",
-          "weight": 35,
-          "reps": 10,
-          "rpe": 8.0
-        }
+        { "exercise_id": "UUID_EXACT_DU_CATALOGUE", "exercise_name": "Nom exact", "set_number": 1,
+          "superset_group": "A1", "weight": 35, "reps": 10, "rpe": 8 }
       ]
     }
   ]
 }`;
+}
+
+function parseModelJson(raw: string) {
+  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start >= 0 && end > start) return JSON.parse(cleaned.slice(start, end + 1));
+    throw new Error("Réponse du coach illisible, réessaie.");
+  }
 }
 
 export async function POST(req: Request) {
@@ -140,13 +167,26 @@ export async function POST(req: Request) {
     );
   }
 
+  // Mémoire de conversation : les derniers échanges texte, pour que « change le jour 2 » ait un sens.
+  const previous = (body.conversation ?? [])
+    .filter((t) => t && typeof t.text === "string" && t.text.trim())
+    .slice(-8)
+    .map((t) => ({
+      role: t.role === "user" ? "user" : "model",
+      parts: [{ text: t.text.slice(0, 1500) }],
+    }));
+
   try {
     const response = await callGemini(
       apiKey,
       JSON.stringify({
         system_instruction: { parts: [{ text: buildInstruction(body) }] },
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, responseMimeType: "application/json" },
+        contents: [...previous, { role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 16384,
+          responseMimeType: "application/json",
+        },
       }),
     );
 
@@ -158,11 +198,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const rawText: string | undefined = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const rawText: string | undefined = data.candidates?.[0]?.content?.parts
+      ?.map((p: { text?: string }) => p.text ?? "")
+      .join("");
     if (!rawText) {
       return NextResponse.json({ error: "Réponse vide du coach IA." }, { status: 502 });
     }
-    return NextResponse.json(JSON.parse(rawText));
+    return NextResponse.json(parseModelJson(rawText));
   } catch (error) {
     const message = error instanceof Error ? error.message : "inconnue";
     return NextResponse.json({ error: `Erreur serveur IA : ${message}` }, { status: 500 });

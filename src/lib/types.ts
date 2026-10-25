@@ -92,6 +92,7 @@ export type CoachDay = {
 export type CoachResponse = {
   programName?: string;
   explanation?: string;
+  followUps?: string[];
   days?: CoachDay[];
   error?: string;
 };

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Bot, Download, Loader2, Save, Send, Sparkles } from "lucide-react";
+import { buildCoachContext } from "@/lib/coachContext";
 import type {
   CoachDay,
   CoachResponse,
@@ -15,7 +16,40 @@ import type {
 
 type Message =
   | { role: "user"; text: string }
-  | { role: "coach"; text: string; programName?: string; days: CoachDay[] };
+  | { role: "coach"; text: string; programName?: string; days: CoachDay[]; followUps?: string[] };
+
+// Rendu minimal du markdown produit par le coach : listes "- " et **gras**.
+function CoachText({ text }: { text: string }) {
+  const renderInline = (line: string) =>
+    line.split(/(\*\*[^*]+\*\*|\*[^*\s][^*]*\*)/g).map((part, i) =>
+      part.startsWith("**") && part.endsWith("**") ? (
+        <strong key={i} className="font-semibold text-slate-50">
+          {part.slice(2, -2)}
+        </strong>
+      ) : part.length > 2 && part.startsWith("*") && part.endsWith("*") ? (
+        <em key={i}>{part.slice(1, -1)}</em>
+      ) : (
+        <span key={i}>{part}</span>
+      ),
+    );
+  return (
+    <div className="space-y-1.5">
+      {text.split("\n").map((raw, i) => {
+        const line = raw.trim();
+        if (!line) return null;
+        if (/^[-•*]\s+/.test(line)) {
+          return (
+            <p key={i} className="flex gap-2 pl-1">
+              <span className="text-indigo-400">•</span>
+              <span>{renderInline(line.replace(/^[-•*]\s+/, ""))}</span>
+            </p>
+          );
+        }
+        return <p key={i}>{renderInline(line)}</p>;
+      })}
+    </div>
+  );
+}
 
 type Props = {
   exercises: Exercise[];
@@ -29,10 +63,10 @@ type Props = {
 };
 
 const SUGGESTIONS = [
-  "Crée-moi un nouveau programme complet sur 3 jours en supersets, qui respecte mes blessures actives",
-  "Analyse ma progression et adapte la séance affichée à l'écran",
-  "Crée-moi une séance haut du corps de 45 minutes",
-  "Programme Upper/Lower sur 4 jours",
+  "Analyse mon volume par muscle cette semaine et dis-moi quoi corriger",
+  "Crée-moi un programme PPL 3 jours en supersets qui respecte mes blessures",
+  "Adapte la séance à l'écran avec ma progression de charges",
+  "Qu'est-ce qui stagne dans mes dernières séances ?",
 ];
 
 export default function CoachPanel({
@@ -63,6 +97,17 @@ export default function CoachPanel({
     const prompt = text.trim();
     if (!prompt || pending) return;
     setInput("");
+    const conversation = messages.slice(-8).map((m) =>
+      m.role === "user"
+        ? { role: "user" as const, text: m.text }
+        : {
+            role: "coach" as const,
+            text:
+              m.days.length > 0
+                ? `${m.text}\n[Séances proposées : ${m.days.map((d) => d.dayName).join(" ; ")}]`
+                : m.text,
+          },
+    );
     setMessages((m) => [...m, { role: "user", text: prompt }]);
     setPending(true);
 
@@ -74,6 +119,7 @@ export default function CoachPanel({
           prompt,
           location,
           exercises,
+          conversation,
           currentSets: currentSets.map(({ exercise_id, exercise_name, set_number, weight, reps, rpe }) => ({
             exercise_id,
             exercise_name,
@@ -82,9 +128,7 @@ export default function CoachPanel({
             reps,
             rpe,
           })),
-          workoutHistory: history.slice(0, 15),
-          injuries,
-          templates,
+          context: buildCoachContext(history, exercises, injuries, templates),
         }),
       });
       const data = (await response.json()) as CoachResponse;
@@ -97,7 +141,7 @@ export default function CoachPanel({
         .filter((day) => day.sets.length > 0);
       setMessages((m) => [
         ...m,
-        { role: "coach", text: data.explanation ?? "Voici ma proposition.", programName: data.programName, days },
+        { role: "coach", text: data.explanation ?? "Voici ma proposition.", programName: data.programName, days, followUps: data.followUps?.slice(0, 3) },
       ]);
     } catch (error) {
       const message =
@@ -152,8 +196,8 @@ export default function CoachPanel({
               <Bot className="h-4 w-4 text-indigo-300" />
             </div>
             <div className="min-w-0 flex-1 space-y-2">
-              <div className="whitespace-pre-wrap rounded-2xl rounded-tl-md border border-slate-800 bg-slate-900 px-3.5 py-2.5 text-sm leading-relaxed text-slate-200">
-                {message.text}
+              <div className="rounded-2xl rounded-tl-md border border-slate-800 bg-slate-900 px-3.5 py-2.5 text-sm leading-relaxed text-slate-200">
+                <CoachText text={message.text} />
               </div>
               {message.programName && message.days.length > 0 && (
                 <p className="px-1 text-xs font-semibold text-indigo-300">{message.programName}</p>
@@ -188,6 +232,19 @@ export default function CoachPanel({
                     ? "Programme enregistré"
                     : `Enregistrer le programme (${message.days.length} jour${message.days.length > 1 ? "s" : ""})`}
                 </button>
+              )}
+              {index === messages.length - 1 && !pending && message.followUps && message.followUps.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {message.followUps.map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => void send(f)}
+                      className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 active:bg-indigo-500/20"
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>
